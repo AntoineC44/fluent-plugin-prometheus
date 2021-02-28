@@ -57,29 +57,22 @@ module Fluent
       end
 
       def self.parse_initlabels_elements(conf)
+        base_initlabels = []
 
-       base_initlabels = []
+        conf.elements.select { |e| e.name == 'initlabels' }.each { |block|
+          initlabels = {}
+          block.each do |key, value|
+            block.has_key?(key)
 
-       initlabels = conf.elements.select { |e| e.name == 'initlabels' }
-
-        unless initlabels.empty?
-          initlabels.each do |block|
-            base_labels = {}
-            unless block.empty?
-              block.each do |key, value|
-                block.has_key?(key)
-
-                # A RecordAccessor has no meaning for initializing a metric's labels
-                if value.start_with?('$.') || value.start_with?('$[')
-                  raise ConfigError, "RecordAccessor cannot be used with initlabels"
-                else 
-                  base_labels[key.to_sym] = value
-                end
-              end
+            # A RecordAccessor has no meaning for initializing a metric's labels
+            if value.start_with?('$.') || value.start_with?('$[')
+              raise ConfigError, "RecordAccessor cannot be used in an initlabel"
+            else 
+              initlabels[key.to_sym] = value
             end
-          base_initlabels << base_labels
           end
-        end
+          base_initlabels << initlabels
+        }
 
         base_initlabels
       end
@@ -185,22 +178,24 @@ module Fluent
 
         def self.init_label_set(metric, base_initlabels, base_labels)
            base_initlabels.each { |initlabel|
-               if initlabel.keys != base_labels.keys
-                 raise ConfigError, "initlabels for metric #{metric.name} must have the same signature than labels " \
-                                    "(initlabels given: #{initlabel.keys} vs." \
-                                    " expected from labels: #{base_labels.keys})"
-               end
-               base_labels.each do |k, v|
-                 if v.is_a?(String)
-                   if initlabel[k] != v
-                     raise ConfigError, "initlabel '#{k}' for metric '#{metric.name}' cannot have value '#{initlabel[k]}' different from provided label string value '#{v}'. Initialized metric would never be used."
-                  end
+             if initlabel.keys.sort != base_labels.keys.sort
+               raise ConfigError, "initlabels for metric #{metric.name} must have the same signature than labels " \
+                                  "(initlabels given: #{initlabel.keys} vs." \
+                                  " expected from labels: #{base_labels.keys})"
+             end
+             
+             base_labels.each do |k, v|
+               if v.is_a?(String)
+                 if initlabel[k] != v
+                   raise ConfigError, "initlabel '#{k}' for metric '#{metric.name}' cannot have value '#{initlabel[k]}' " \
+                                      "different from provided label string value '#{v}'. " \
+                                      "Initialized metric would never be used."
                  end
                end
-               metric.init_label_set(initlabel)
+             end
+             metric.init_label_set(initlabel)
             }
         end
-
 
         def labels(record, expander)
           label = {}
