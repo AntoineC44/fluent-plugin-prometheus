@@ -56,6 +56,37 @@ module Fluent
         base_labels
       end
 
+      def self.parse_initlabels_elements(conf)
+
+       base_initlabels = []
+
+       initlabels = conf.elements.select { |e| e.name == 'initlabels' }
+
+        unless initlabels.empty?
+          initlabels.each do |block|
+            base_labels = {}
+           unless block.empty?
+            block.each do |key, value|
+            block.has_key?(key)
+
+            # use RecordAccessor only for $. and $[ syntax
+            # otherwise use the value as is or expand the value by RecordTransformer for ${} syntax
+            if value.start_with?('$.') || value.start_with?('$[')
+              raise ConfigError, "RecordAccessor cannot be used with initlabels"
+            else
+              base_labels[key.to_sym] = value
+            end
+          end
+        end
+        base_initlabels << base_labels
+end
+end
+
+        base_initlabels
+
+
+      end
+
       def self.parse_metrics_elements(conf, registry, labels = {})
         metrics = []
         conf.elements.select { |element|
@@ -137,6 +168,7 @@ module Fluent
         attr_reader :name
         attr_reader :key
         attr_reader :desc
+        attr_reader :initmetric
 
         def initialize(element, registry, labels)
           ['name', 'desc'].each do |key|
@@ -151,6 +183,12 @@ module Fluent
 
           @base_labels = Fluent::Plugin::Prometheus.parse_labels_elements(element)
           @base_labels = labels.merge(@base_labels)
+
+          @initmetric = element['initmetric'] == "true"
+
+          if @initmetric
+            @base_initlabels = Fluent::Plugin::Prometheus.parse_initlabels_elements(element)
+          end
         end
 
         def labels(record, expander)
@@ -213,6 +251,17 @@ module Fluent
             @counter = registry.counter(element['name'].to_sym, docstring: element['desc'], labels: @base_labels.keys)
           rescue ::Prometheus::Client::Registry::AlreadyRegisteredError
             @counter = Fluent::Plugin::Prometheus::Metric.get(registry, element['name'].to_sym, :counter, element['desc'])
+          end
+
+          if @initmetric
+            @base_initlabels.each { |initlabel|
+               if initlabel.keys != @base_labels.keys
+                 raise ConfigError, "initlabels for metric #{element['name']} must have the same signature than labels " \
+                                    "(initlabels given: #{initlabel.keys} vs." \
+                                    " initlabels expected: #{@base_labels.keys})"
+               end
+               @counter.init_label_set(initlabel)
+            }
           end
         end
 
