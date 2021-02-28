@@ -1,0 +1,9 @@
+/usr/local/share/gems/gems/
+/usr/local/bin/fluentd
+/usr/local/bin/fluentd -c fluent.conf
+echo '{"test":2}'  | nc 127.0.0.1 5170
+echo '{"test":2, "a":3}'  | nc 127.0.0.1 5170
+curl http://localhost:24231/metrics
+/usr/local/bin/rake
+/usr/local/bin/rake install
+/usr/local/bin/bundle
